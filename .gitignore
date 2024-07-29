@@ -1,1 +1,4 @@
 /__pycache__
+yaml/secrets.yml
+yaml/secrets_git_version.yml
+

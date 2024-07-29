@@ -56,7 +56,7 @@ general:
     #  levels
     log_level_syslog: 5,
     log_level_file: 5,
-    log_level_debug: 5,
+    log_level_debug: 4,
     # log_level_db: -5
     # log levels -> 1 dbg/print/blank 0 info, -1 warn, -2 err, -3 fatal, -4 panic, -5 off
     log_debug_file: 1,
@@ -151,13 +151,12 @@ control_and_strategy:
 
 zone_object_detection:
   zone_object_detection_options:
+    # Specifies whether program run as a local user.
+    zone_run_as_local_user: no
     # If yes, will only detect objects within the zone
     zone_object_detection_enabled: yes
-    # If yes, will only detect objects that are intersecting the zone
-    # Coords are retrieved from ZM's ZoneMinder API
-    zone_coordinates:
-    # Only objects wich interfere with the zone will be considered
-    only_zone_inside_detection: no
+    # Objects are also taken into account wich are partially inside the zone
+    consider_partially_inside_zone: yes
 
 
 model_options:
