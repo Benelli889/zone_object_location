@@ -86,8 +86,8 @@ class ObjLocation():
         # todo: make the search configurable
         for zone in list_of_zones:
             if (     (zone.zone['Zone']['MonitorId'] == MonID)
-                #and (zone.zone['Zone']['Type'] == 'Active')
-                and (zone.zone['Zone']['Type'] == 'Inactive')
+                and (zone.zone['Zone']['Type'] == 'Active')
+                #and (zone.zone['Zone']['Type'] == 'Inactive')
                 and (re.findall(Zones_Monitor_name_tag, zone.zone['Zone']['Name']))):
 
                 mon_zone_coords.append(zone.zone['Zone']['Coords'])

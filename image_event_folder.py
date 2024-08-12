@@ -25,18 +25,14 @@ def LoadObjectsJson(EventFolder : str) -> dict:
     return data
 
 
-def LoadZones(EventFolder : str) -> dict:
+def LoadZones(EventFolder : str) -> str:
 
-    # Opening JSON file
+    # open zones.html
     file = EventFolder + '/' + 'zones.html'
-    #f = open(EventFolder + '/' + 'zones.html')
 
+    # returns zone data as string
     with open(file, 'r') as file:
         data = file.read().rstrip()    
-
-    # returns JSON object as a dictionary
-    #data = f.read()
     file.close()
 
     return data
-
