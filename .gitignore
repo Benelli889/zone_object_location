@@ -1,4 +1,11 @@
 /__pycache__
 yaml/secrets.yml
 yaml/secrets_git_version.yml
-
+images/obj_alarm.jpg
+images/zone_0.jpg
+images/zone_1.jpg
+images/zone_2.jpg
+objdet.log
+secrets.yml
+yaml/secrets.yml
+.gitignore
