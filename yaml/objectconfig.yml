@@ -156,7 +156,11 @@ zone_object_detection:
     # If yes, will only detect objects within the zone
     zone_object_detection_enabled: yes
     # Objects are also taken into account wich are partially inside the zone
-    consider_partially_inside_zone: yes
+    consider_partially_inside_zone: no
+    # Inkscape file name for the zones
+    Inkscape_zones_file_name: 'object_zone.html'
+    # zone_object_detection_pattern: (person|cat|dog|car|...)
+    zone_object_detection_pattern: (person|cat|dog)
 
 
 model_options:

@@ -1,3 +1,4 @@
+#!/usr/bin/python3
 import os
 import cv2
 from thread_decorator import threaded
@@ -9,7 +10,7 @@ from shutil import chown
 import re
 import json
 from pyzm.interface import GlobalConfig, MLAPI_DEFAULT_CONFIG as DEFAULT_CONFIG
-
+from image_event_folder import *
 
 local_images_path = './images'
 lp = 'ZONE_OBJ'
@@ -20,7 +21,7 @@ class ObjLocation():
         init = -1
         outside_zone = 0
         inside_zone = 1
-        partly_inside_zone = 2
+        partially_inside_zone = 2
 
     def __init__(self, g: GlobalConfig, EventID: int):
         """
@@ -93,7 +94,73 @@ class ObjLocation():
                 mon_zone_coords.append(zone.zone['Zone']['Coords'])
         self.zone_coordinates = mon_zone_coords
 
+        if self.zone_coordinates == []:
+            self.g.logger.info(f"{lp} Can't retrive event-Zone-coordinates: {self.zone_coordinates}")
+
+        else:
+            for zones in self.zone_coordinates:
+                zones_pts = zones.split(' ')
+                zones_pts = [list(map(int, x.split(','))) for x in zones_pts]
+
+            print (zones_pts)
+            self.zone_coordinates = zones_pts
+
         return self.zone_coordinates
+
+
+    def get_zone_coordinates_Inkscape_html(self, MonID: int) -> list:
+        """
+        Retrieves the coordinates of zone from the html - Inkscape file -> object_zone.html.
+        """
+
+        # todo: algorithm not robust enough
+
+        def LoadZones(EventFolder : str) -> str:
+            # open zones.html
+            file = EventFolder
+
+            # returns zone data as string
+            with open(file, 'r') as file:
+                data = file.read().rstrip()    
+            file.close()
+            return data
+
+        # Get Monitor file path
+        # eg: '/mnt/DiskVerbatimVi55/ZMEvents/8/2024-08-15/31259'
+        object_zone_html = self.g.config['zone_object_detection_options'].get('Inkscape_zones_file_name', '')
+
+        pattern = str(self.MonitorID) + '/'
+        pos = re.search(pattern, self.EventFilePath).start()
+        object_zone_filename = self.EventFilePath[0:pos + len(pattern)] + object_zone_html
+
+        #zone_data = LoadZones("/mnt/DiskVerbatimVi55/ZMEvents/8/object_zone.html")
+
+        try:
+            zone_data = LoadZones(object_zone_filename)
+        except Exception as all_ex:
+            print(f"Can't read Inkscape zones file: , {self.EventFilePath} -> {all_ex}")
+            self.g.logger.info(f"{lp} Can't read Inkscape zones file: {self.EventFilePath}")
+            self.zone_coordinates = []
+        else:
+
+            start_of_polygon_coord = zone_data.split('moveTo')
+            polygon_coord_raw = re.findall(r"[-+]?\d*\.\d+|\d+", start_of_polygon_coord[1])
+
+            # Convert list of strings to list of integers
+            polygon_coord = [int(float(x)) for x in polygon_coord_raw]   
+
+            # Convert list of tuple
+            polygon_coord_tupel = ([(polygon_coord[i], polygon_coord[i+1]) for i in range(0, len(polygon_coord), 2)])
+
+            # Convert list of lists
+            polygon_coord_list = [list(i) for i in polygon_coord_tupel]
+            self.g.logger.info(f"{lp} Inkscape zones: {polygon_coord_list}")
+            zone_coordinates_Inkscape = polygon_coord_list
+
+            self.zone_coordinates = zone_coordinates_Inkscape
+
+        return self.zone_coordinates
+
 
 
     def get_event_data(self) -> list:
@@ -105,6 +172,12 @@ class ObjLocation():
         self.labels = json_data['labels']
         self.bboxes = json_data['boxes']
         self.object_bboxes_list=[]
+
+        zone_object_pattern = re.findall(r"[a-z]+", self.g.config['zone_object_detection_options'].get('zone_object_detection_pattern', ''))
+
+        #zone_object_pattern = self.g.config['zone_object_detection_options'].get('zone_object_detection_pattern', '')
+        
+        zone_labels = list(set(zone_object_pattern).intersection(self.labels))
 
         for counter, value in enumerate(self.labels, start=0):
 
@@ -158,7 +231,7 @@ class ObjLocation():
             if zone_state == self.location.inside_zone:
                 # Red color in BGR
                 color = (0, 0, 255) 
-            elif zone_state == self.location.partly_inside_zone:
+            elif zone_state == self.location.partially_inside_zone:
                 # Red color in BGR
                 color = (255, 125, 255) 
             else:
@@ -226,10 +299,11 @@ class ObjLocation():
         """
         gray_level = 127
 
-        for zones in self.zone_coordinates:
-            zones_pts = zones.split(' ')
-            zones_pts = [list(map(int, x.split(','))) for x in zones_pts]
+        # self.zone_coordinates format: [[543, 95], [912, 96], [939, 503], [904, 609], [546, 606]]
 
+        # for zones in self.zone_coordinates:
+        #     zones_pts = zones.split(' ')
+        #     zones_pts = [list(map(int, x.split(','))) for x in zones_pts]
 
         self.location_zone.clear()
         for object_bbox_counter, object_bbox, in enumerate(self.object_bboxes_list):
@@ -237,7 +311,7 @@ class ObjLocation():
             blank_image = gray_level * np.ones(shape=(self.height, self.width, self.c), dtype=np.uint8)
 
             #pts = np.array(zones_pts, np.int32)    
-            self._draw_polygon(blank_image, zones_pts)
+            self._draw_polygon(blank_image, self.zone_coordinates)
 
             # get lenght of the object bounding box
 
@@ -251,7 +325,7 @@ class ObjLocation():
             contours = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             contours = imutils.grab_contours(contours)
 
-            length_zone = cv2.contourArea(contours[0]) 
+            length_zone = cv2.contourArea(contours[0])
 
 
             self._draw_rectangle_color(blank_image, 
@@ -287,7 +361,7 @@ class ObjLocation():
             else:
                 # if the zone has increased in size
                 if length_object > length_zone:
-                    self.location_zone.append(self.location.partly_inside_zone)
+                    self.location_zone.append(self.location.partially_inside_zone)
                 else:
                     self.location_zone.append(self.location.inside_zone)
 
@@ -324,9 +398,19 @@ class ObjLocation():
         Performs the complete object location process
         """
 
+        # First check if the zone coordinates are available in Zoneminder
+
         # Queries the zone coordinates from the zm-api
         if self.get_zone_coordinates(self.MonitorID) != []:
             print(f"Zone coordinates: {self.zone_coordinates}")
+
+        else:
+
+            # If not check if the zone coordinates are available in the Inkscape file
+
+            # Queries the zone coordinates from Inkscape file -> object_zone.html.
+            if self.get_zone_coordinates_Inkscape_html(self.MonitorID) != []:
+                print(f"Zone coordinates: {self.zone_coordinates}")
 
         if self.get_event_image_size() != []:
             print(f"Image size: {self.width} x {self.height}")

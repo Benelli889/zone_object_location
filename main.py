@@ -1,4 +1,3 @@
-# main program
 import os
 import sys 
 import time
@@ -7,13 +6,12 @@ from pyzm.interface import GlobalConfig, MLAPI_DEFAULT_CONFIG as DEFAULT_CONFIG
 from pyzm.helpers.pyzm_utils import LogBuffer
 from pyzm.api import ZMApi
 import yaml
-import zone_obj_location as zol
+import zone_obj_loc as zol
 
 yaml_file_path = './yaml'
 CONFIG_PATH = rf'{yaml_file_path}/objectconfig.yml'
 SECRETS_LOCAL = rf'{yaml_file_path}/secrets.yml'
 lp = 'ZONE_OBJ'
-#g: GlobalConfig
 
 
 # Load local secrets from yaml file
@@ -50,7 +48,6 @@ def WriteDebugMsgToLogFile() -> None:
                     f"{fnfl} [{line['message']}]"
                 )
                 print(print_log_string, file=outfile)
-
     outfile.close()
 
 
@@ -96,8 +93,8 @@ def main():
         g.logger.info(f"{lp} ZM-Version: {version} - Status: {status}")
 
     ###############
+    # Chossing the event to be processed
     EventID = 25327
-    #EventID = 25344
     ###############
 
     _, Monitor, _ = g.api.get_all_event_data(EventID)
@@ -166,7 +163,7 @@ def main():
         location_zone_set = {loc.value for loc in location_list}
         
         if (obj_loc.location.inside_zone.value in location_zone_set)                       or     \
-            ((obj_loc.location.partly_inside_zone.value in location_zone_set)              and    \
+            ((obj_loc.location.partially_inside_zone.value in location_zone_set)              and    \
             (g.config['zone_object_detection_options'].get('consider_partially_inside_zone', False))):
 
             g.logger.debug(
@@ -218,8 +215,8 @@ def main():
                 # do specific alaming for inside_zone
                 pass
             
-            if location_list == obj_loc.location.partly_inside_zone:
-                # do specific alaming for each partly_inside_zone
+            if location_list == obj_loc.location.partially_inside_zone:
+                # do specific alaming for each partially_inside_zone
                 pass
 
             if location_list == obj_loc.location.outside_zone:
@@ -228,19 +225,17 @@ def main():
 
 
 
-
-
 if __name__ == "__main__":
 
     start_of_objdet_py = time.perf_counter()
 
-    # try:
-    #     main()
+    try:
+        main()
 
-    # except Exception as all_ex:
-    #     print(f"ERROR:  {all_ex}")
-    #     # g.logger.error(
-    #     #     f"{main} ERROR -> {all_ex}")
+    except Exception as all_ex:
+        print(f"ERROR:  {all_ex}")
+        g.logger.error(
+            f"{main} ERROR -> {all_ex}")
     main()
 
     print(f'Total time {lp}: {time.perf_counter() - start_of_objdet_py} sec')
