@@ -1,0 +1,997 @@
+---
+# Configuration file for object detection
+# *** NOTE: zmeventnotification.yml and secrets.yml are for configuring the ZMEventnotification.pl (Perl) daemon
+# that reads the shared memory to find new events that are happening in ZM. objectconfig.yml and its zm_secrets.yml
+# are strictly for the object detection part of ZMES.
+
+# You can now use 'sections', Enable by adding ZMES: 1 as the first key in the config file
+ZMES: 1
+# You can add as many sections as you want. You can not nest sections or have the keys more than 1 level deep.
+# ALL KEYS MUST RESIDE IN A SECTION IF YOU ENABLE SECTIONS! DO NOT PLACE monitors: INTO A SECTION. it is already nested.
+# You can name the sections whatever you want, but they must be unique.
+# Once processed the sections are stripped and all the keys are once again spread out on the base level.
+# Sections is for readability/organization. Think Pycharm and want to collapse a section from the structure tab.
+
+general:
+#  base data path for various files the ES+OD needs, this is the path where ZMES was installed
+#  [Default: /var/lib/zmeventnotification]
+  base_data_path: '/var/lib/zmeventnotification'
+
+  #secrets : '{{base_data_path}}/zm_secrets.yml'
+  secrets : './yaml/secrets.yml'
+
+  # You can now limit the # of detection process
+  # per target processor. If not specified, default is 1
+  # Other detection processes will wait to acquire lock
+  # NOTE: If you have multiple sequences and things just stall, increase this value for the processor
+  #  (WORKING on feedback for timeouts attributed to BoundedSemaphore)
+  cpu_max_processes: 3
+  tpu_max_processes: 2
+  gpu_max_processes: 3
+
+  # Time to wait in seconds per processor to be free, before
+  # erring out. Default is 120 (2 min)
+  # NOTE: This timeout is silent sop if you have multiple sequences that use the same processor and things are stalling.
+  # Then you may need to increase active processes allowed. I am working on a 'dequeue' mechanism to make this more robust.
+  # ;)
+  cpu_max_lock_wait: 120
+  tpu_max_lock_wait: 100
+  gpu_max_lock_wait: 120
+
+  # If yes, will import the ZoneMinder zones instead of needing to manually configure polygons in monitors section.
+  # [Default: no]
+  # NOTE: currently this imports all ZM ZOnes for every monitor, I may make this a per monitor option later for power users.
+  import_zm_zones: no
+
+  # If enabled, will only filter zone names that match the alarm cause
+  # This is useful if you only want to report detections where motion
+  # was detected by ZM.
+  # NOTE: This is assuming it is a monitor set to some sort of motion, what if its a linked monitor or a MOCORD situation?
+  #  [Default: no]
+  only_triggered_zm_zones: no
+
+  # Keep debug logging on for now
+  pyzm_overrides:
+    console_logs: no,
+    #  levels
+    log_level_syslog: 5,
+    log_level_file: 5,
+    log_level_debug: 4,
+    # log_level_db: -5
+    # log levels -> 1 dbg/print/blank 0 info, -1 warn, -2 err, -3 fatal, -4 panic, -5 off
+    log_debug_file: 1,
+    log_debug: True,
+    log_debug_target: _zmesdetect|_zmes_file|_zmes|_zmesdetect|_zmes|_zmes_detect
+
+  # comma split list of monitor IDs to skip processing hooks on.
+  # I put it here, so you don't have to restart zmeventnotification.pl to skip processing
+  # If it is a PAST event it will not skip the monitor, this only applies to LIVE events
+  # [Default: None]
+  # skip_mons:
+
+  # remove your <portal> from the logs, passwords are already sanitized. If <portal> is not supplied
+  # but <api_portal> is, we will slice the /api off of it and use the base URL as portal -> x.y.z/zm/api becomes x.y.z/zm
+  # [Default: no]
+  sanitize_logs: no
+
+  # The string to show when the logs are sanitized instead of the sensitive info
+  # [Default: <sanitized>]
+  sanitize_str: <obfuscated>
+
+  # Delay before running any frames at all
+  # [Default: 0]
+  delay: 3.0
+
+  # Place a timestamp on objdetect.jpg - Useful if saving events as mp4.
+  picture_timestamp:
+    enabled: yes
+    date format: '%Y-%m-%d %H:%M:%S'
+    monitor name: yes
+    text color: '(255,255,255)'  # Default: (255,255,255) aka white
+    # background is the solid colored rectangle that the timestamp text is printed on
+    background: yes
+    bg color: '(0,0,0)'  # Default: (0,0,0) aka black
+    # Override the scaling factor for the timestamp text (EXPERIMENTAL)
+
+login:
+  # portal/user/password are needed if you plan on using ZM's legacy
+  # auth mechanism to get images (basic_user basic_password)
+  portal: '{[ZM_API_PORTAL]}'
+  user: '{[ZM_USER]}'
+  password: '{[ZM_PASSWORD]}'
+
+  # api portal is needed if you plan to use tokens to get images (API 2.0+ - RECOMMENDED!!!!!!!!!!!!!)
+  # requires ZM 1.33 or above
+  api_portal: '{[ZM_PORTAL]}'
+
+  # Allow self-signed SSl (HTTPS) certificates
+  allow_self_signed: yes
+
+  # If you need basic auth to access ZM
+  basic_user: '{[ZM_BASIC_USER]}'
+  basic_password: '{[ZM_BASIC_PASS]}'
+
+debug:
+  # force creation of objdetect.jpg even if its a past event or we already have a detection
+  # etc if its a past event or an event that already has its detection and it is the exact same
+  # [Default: no]
+  force_debug: yes
+  # FOR DEBUGGING -- force LIVE EVENT logic
+  # [Default: no]
+  force_live: 
+
+  Toggle_WriteMsgToLogFile: yes
+
+control_and_strategy:
+  # What frames to run detections on
+  # frame_set: alarm,snapshot,snapshot
+  frame_set: 'snapshot,alarm'
+
+  # Example of using snapshot and alarm with frame ID's
+  # frame_set: alarm,135,234,367,snapshot,444,555,666
+
+  # 'first'       - When detecting objects, if there are multiple fallbacks, break out
+  #                 the moment we get a match using any object detection library.
+  # 'most'        - run through all libraries, select one that has most object matches
+  # 'most_unique' - run all models, select one that has unique object matches 
+  #                 (Removes duplicate labels, whichever label has the most matches is a match)
+  # 'union'       - sum all the detected objects together between models ** only for same_model_sequence_strategy
+  frame_strategy: first
+  # frame_strategy: first
+  same_model_sequence_strategy: most
+
+  # sequence of models to run for detection
+  # model_sequence: object,face,alpr
+  model_sequence: object,face
+  #model_sequence: face
+
+  # This is the Width to resize the image before analysis is done, aspect ratio is preserved.
+  # Setting it here will activate resizing in MLAPI as well (setting resize in mlapi' config has no effect)
+  resize: 800
+
+zone_object_detection:
+  zone_object_detection_options:
+    # Specifies whether program run as a local user.
+    zone_run_as_local_user: no
+    # If yes, will only detect objects within the zone
+    zone_object_detection_enabled: yes
+    # Objects are also taken into account wich are partially inside the zone
+    consider_partially_inside_zone: no
+    # Inkscape file name for the zones
+    Inkscape_zones_file_name: 'object_zone.html'
+    # zone_object_detection_pattern: (person|cat|dog|car|...)
+    zone_object_detection_pattern: (person|cat|dog)
+
+
+model_options:
+  # Show which model returned the prediction (useful when mixing models -> object + face/alpr)
+  # [Default: no] - This only sets the value, to enable you must add this in the sequence or general options of the model
+  show_models: yes
+
+  # Images to train ML models with!
+  # save 2 images to disk, 1 frame has nothing drawn on top of it, you can use it to label and train models
+  # the other frame is the objdetect.jpg frame basically, you can 'compare' what the current model found and what you want it/not want it to find
+  # format is <event ID>-training-<frame ID>.jpg and <event ID>-compare-<frame ID>.jpg
+  # [Default: {{base_data_path}}/images]
+  save_image_train: no
+  save_image_train_dir: /nas/yolo_train
+
+  # if yes, last detection will be stored for monitors
+  # and bounding boxes that match, along with labels
+  # will be discarded for new detections. This may be helpful
+  # in getting rid of static objects that get detected
+  # due to some motion.
+  match_past_detections: no
+
+  # The max difference in area between the objects if match_past_detection is on
+  # can also be specified in px like 300px. Default is 5%. Basically, bounding boxes of the same
+  # object can slightly differ ever so slightly between detection. Contributor @neillbell put in this PR
+  # to calculate the difference in areas and based on his tests, 5% worked well. YMMV. Change it if needed.
+  # Note: You can specify label/object specific max_diff_areas as well. If present, they override this value
+  # example:
+  person_past_det_max_diff_area: 5%
+  #car_past_det_max_diff_area: 5000px
+  car_past_det_max_diff_area:
+  confidence_upper:
+  past_det_max_diff_area: 5%
+
+  # this is the maximum size a detected object can have. You can specify it in px or % just like past_det_max_diff_area
+  # This is pretty useful to eliminate bogus detection. In my case, depending on shadows and other lighting conditions,
+  # I sometimes see "car" or "person" detected that covers most of my driveway view. That is practically impossible
+  # and therefore I set mine to 70% because I know any valid detected objected cannot be larger than that area
+
+  max_detection_size: 90%
+
+  # Adds confidence percentage to the labels drawn onto the matching frame
+  # (person) becomes (person 97%)
+  # hog/face shows 100% always
+  show_percent: yes
+
+  # Draw the polygon/zone on objdetect.jpg, this is handy to make sure that the polygons you defined
+  # in the per monitor overrides are actually what you want them to be.
+  draw_poly_zone: no
+  # color to be used to draw the polygons you specified, BGR not RGB
+  poly_color: (100,0,255)
+  # thickness of the line used to draw the polygon/zone
+  poly_thickness: 2
+  # Draw red bounding boxes around objects that were filtered out (useful for debugging)
+  show_filtered_detections: no
+  # If this is yes then objects that were filtered out due to be under the minimum confidence level will have red bounding
+  # boxes drawn around them IF you have show_filtered_detections enabled. I found this caused a lot of 'noise' so I made
+  # it configurable. This could be helpful if you are testing your own trained models.
+  show_conf_filtered: no
+
+hass_options:
+  ##################################################
+  # ------ [ HOME ASSISTANT ADD-ON SECTION ] ------
+  ##################################################
+  # this is the main setting, you need to enable using per monitor home assistant sensors to check their state.
+  #  You can control sending pushover notifications at all and also the 'cool down' time in between pushover messages.
+  # I made this for performance reasons, the old api push script has to wait for this script to reply and for the perl script
+  # to use it. I tried AppDaemon and some other workarounds but this solved all my problems.
+  # For now there are 2 types of sensors created using the 'Helpers'. Bool and Input Text. Bool is the on/off switch. Text
+  # input is used for 'float' numbers (30.54, etc.). the number represents how long in seconds to not allow pushover
+  # notifications to be sent (per monitor).
+  # Enable add-on. Default: no
+  hass_enable: yes
+  # set schema here too (http:// or https://)
+  hass_server: '{[HA_SERVER]}'
+  # long lived token created for this purpose
+  hass_token :  '{[HA_TOKEN]}'
+
+  # The gist is to create a bool and text input helper for each monitor that you can configure in the Home Assistant
+  #  front end. Put the names of the sensors in each monitor' override section so the script queries the correct sensor.
+
+  # person sensor support is coming soon
+  #hass_people:
+  #  mike: 'person.mike'
+  #  maryanne: 'person.maryanne'
+
+  # HOME ASSISTANT add-on sensors, make these the actual name of the sensors, If you specify it here this will be the
+  # 'global default'. You can override per monitor as well. If you dont use HA you can use push_cooldown to control
+  # the cooldown between pushover messages.
+
+  hass_notify: input_boolean.driveway_pushover
+  hass_cooldown: input_number.pushover_cooldown_driveway
+
+
+push_notification_options:
+  # custom push script - example is for gotify - see example for usage of the passed arguments
+  custom_push: yes
+  custom_push_script: '/var/lib/zmeventnotification/bin/gotify_zmes.sh'
+
+  # PUSHOVER
+  # BE AWARE GOTIFY IS FASTER, albeit with less features. You could use gotify as the 'first message' to be alerted quickly
+  # Pushover but integrated directly into the detection script so it can be sent as fast as possible, by default it will
+  # look for a GIF first then objdetect.jpg. If it doesnt find either then it goes for snapshot then alarm. If you arent
+  # creating animations it will send a picture of the best matched frame with bounding boxes and labels. Setup push_token
+  # and push_user_key to get either a jpg or gif notification based on if you create animations or not. There is also
+  # an advanced setup where you can send the JPG AND GIF in 2 separate messages to either the same APP_TOKEN or jpg
+  # notification to 1 and gif to another. I have setup a URL link inside the pushover notifications that when clicked will
+  # let you view the event in a browser window using AUTH, AUTH defaults to using the same user/pass that you use for
+  # ZMES or you can override that user and pass by setting push_user and push_pass
+  # I recommend making an API user named 'pushover_url' or 'pushover_viewonly' and only giving it 'View' permission for
+  # Events and Stream. The credentials/token are inside the notification payload and it is sent over https to pushover.
+
+  # Enable the PushOver python add-on? (Default: no)
+  # Remember to turn off the api_push in zmeventnotification.yml or you will receive 2 different messages
+  push_enable: yes
+  # Force sending a pushover notification when debugging a PAST event
+  push_force: no
+  # Pushover default or only User Key and App Token
+  push_token: '{[PUSHOVER_APP_TOKEN]}'
+  push_key: '{[PUSHOVER_USER_KEY]}'
+
+  # Custom sound for pushover notifications (NOTE: has to be setup in your pushover account first) (Default: None)
+  # push_sound: tugboat
+
+  # -------------------------------------------------------------
+  # Show a clickable link to view the event in a browser, this is handy if the pushover notification goes out to
+  # a device without zmNinja installed, they can just click the link and view the event in a regular browser.
+  # NOTE: Your ZM server must be accessible externally for this to work correctly, its super handy to just click the link
+  # (Default: no)
+  push_url: yes
+
+  # The ZM API user for the clickable URL link in push notifications (Pushover and custom_push_script).
+  #  I HIGHLY recommend https on your ZM host, making a user with VIEW privileges of stream and events only and
+  # using that for push_user and pass. Example: make a user named 'push_view' with VIEW privs only for STREAM and EVENT
+  push_user: '{[PUSHOVER_USER]}'
+  push_pass: '{[PUSHOVER_PASS]}'
+  # -------------------------------------------------------------
+
+  # Send a pushover notification if TPU or GPU errors are detected, i.e. 'delegate' error for tpu or
+  # cant convert float() infinite to int()' or '(GPU-API-217)' for yolo. (Default: no)
+  push_errors :  no
+  push_err_token: '{[PUSHOVER_ERR_TOKEN]}'
+  push_err_key: '{[PUSHOVER_USER_KEY]}'
+  #push_err_device: My-S21
+  push_error_sound:
+
+  # *** Only enable push_jpg and push_gif if you have create_animations: yes ***
+  # If you have animation enabled and want a push sent with the jpg (FAST notification) set this option up with the APP TOKEN for each type of notification
+  # I have 2 different Pushover apps with 2 different APP TOKENS 1 channel is for the jpegs because the notifications are as fast as it gets
+  # and I have another channel for the GIF. You could also put the same app token as push_user in both jpg and gif and that pushover app will receive both a jpg and then a gif
+
+  #push_jpg: '{[PUSHOVER_JPG]}'
+  # Different user key if using groups, comment out to use default user key -> push_key
+  #push_jpg_key: '{[PUSHOVER_JPG_KEY]}'
+
+  #push_gif: '{[PUSHOVER_GIF]}'
+  # Different user key if using groups, comment out to use default user key -> push_key
+  #push_gif_key: '{[PUSHOVER_GIF_KEY]}'
+
+  # If debugging (using es.debug.objdet) a PAST event then only send pushover notifications to this device
+  # (Default: None)
+  #push_debug_device :  my-Note10
+
+  # If you do not use Home Assistant and want to control the cooldown between pushover notifications
+  # set this to how many seconds. Use it in each monitor's section to set the cooldown per monitor
+  # This will be the global setting that can be overridden in the per monitor section (Default: None)
+
+  push_cooldown: 120
+
+  # EXPERIMENTAL - PushOver 'emergency' priority notifications; acknowledge the notification or, it will repeatedly
+  # remind you to acknowledge it for up to 3 hours, the time between reminders and the expiry length are configurable.
+  # If you configure the pushover app to use the Alarm channel, and set the alarm channel volume to max
+  # and allow PushOver to ignore Do Not Disturb, the notification will be LOUD and guaranteed to play even if you have
+  # everything silent and Do Not Disturb enabled! Good if someone has been prowling around and you want your phone to scream at you!
+
+  # See https://pushover.net/api#priority for more info, specifically the emergency priority (2). I may add options
+  # for receipts and the POST that pushover servers can send to ane external webserver to confirm that someone received
+  # and acknowledged the notification.
+
+  push_emergency: yes            # master switch
+  #push_emerg_mons: 9, 11, 4     # comma seperated monitor ID's Example: 1,3,6,9 OR 2
+  push_emerg_expire: 3600        # length in seconds that the notification will stop reminding, MAX is 10800 (3 hours) Default: 3600 (1 Hour)
+  push_emerg_retry: 60           # replay the notification every X seconds Default: 120
+
+  # If the current time is within this time range, then the notification will be sent.
+  # Uses a dateparser that accepts human-readable input like "yesterday at 9PM"
+  push_emerg_time_start: 'yesterday 10 PM'  # Default 'midnight' - TESTING! unexpected things may happen regarding timerange!
+  # If event happens after midnight it works as expected but before midnight it does not - working on a solution.
+  push_emerg_time_end: '8 AM'  # default: '23:59'
+  push_emerg_force: yes  # force sending an emergency pushover notification even if it is not a LIVE event
+  # NOTE: The notification will be processed normally if the emergency priority is stripped from it.
+
+mqtt_options:
+  ###########################################
+  #    ------ [ MQTT ADD-ON SECTION ] ------
+  ###########################################
+  # use python mqtt client to send alarm,snapshot,objdetect(.jpg/.gif) to zmes/picture/<monitor id> topic (Default: no)
+  # useful if you setup a MQTT camera in Home Assistant.
+  # Options to use no encryption or secure/insecure TLS/mTLS
+  # Default ports: for TCP: non-TLS: 1883  TLS:8883 .
+  mqtt_enable: no
+
+  # Force mqtt to send pic and data even if its a PAST event
+  mqtt_force: no
+
+  # Allow you to set a custom MQTT topic name, formats for topics are: name/sub-name/sub-sub-name
+  # notice no leading or trailing '/'
+  # python mqtt default topic: zmes
+  # mqtt_topic :  myown_topic/here
+  mqtt_topic :  zoneminder
+
+  # if using tls remember about host verification (tls_insecure :  no host verification but still encrypted)
+  # mqtt_broker :  brokers.hostname
+
+  # Only use this if not using standard tcp ports, it defaults to 1883 if no TLS and 8883 if TLS, this setting will override
+  # mqtt_port :  1234
+  # MQTT Credentials if enabled in broker
+  mqtt_user :  '{[MQTT_USERNAME]}'
+  mqtt_pass :  '{[MQTT_PASSWORD]}'
+
+  # MQTT over TLS
+  # Location to MQTT broker CA certificate. Uncomment this line will enable MQTT over TLS.
+  # Strict certificate checking (Default: no)
+  mqtt_tls_allow_self_signed :  yes
+
+  # To allow insecure TLS - disable peer verifier/don't verify hostname in COMMON NAME (CN:  field), (Default: no)
+  # if using ip address in cert's COMMON NAME field then this needs to be 'yes'
+  mqtt_tls_insecure :  yes
+
+  # CA certificate
+  # mTLS CA (self signed?)
+  # tls_ca :  /path_to/mqtt_certs/ca.crt
+  # TLS CA (LetsEncrypt?)
+  # tls_ca :  /etc/certs/fullchain.pem
+
+  # Here is a good guide on setting up a CA and signing server/client certificates for MQTT, even if your using mqtt over your LAN only,
+  # it is always good to enable encryption and learn about it -> http://www.steves-internet-guide.com/creating-and-using-client-certificates-with-mqtt-and-mosquitto/
+  # I DO NOT RECOMMEND using Home Assistant MQTT broker add-on as its a nightmare to get TLS working. (I am still unable to get the MQTT integration to connect to my broker using TLS)
+  # I run an MQTT mosquitto broker on my ZM host and hass connects to that over unencrypted connection.
+  # To enable 2-ways TLS, add client certificate and private key, Meaning you had a CA sign your brokers server key/cert
+  # and also had the CA sign the client key/cert that you are using here
+  # Location to client certificate and private key
+
+  # tls_cert :  /path_to/mqtt_certs/client-zm.crt
+  # tls_key :  /path_to/mqtt_certs/client-zm.key
+
+animation_options:
+  ###########################################
+  #    ------ [ ANIMATION SECTION ] ------
+  ###########################################
+
+  # This section gives you an option to get brief animations
+  # of the event, delivered as part of the push notification to mobile devices
+  # Animations are created only if an object is detected
+  #
+  # NOTE: This will DELAY the time taken to send you push notifications
+  # It will try to first create the animation, which may take upto a minute
+  # depending on how soon it gets access to frames. See notes below
+  # NOW INCLUDES, first bit of frames are annotated with bounding boxes and label and a TIMESTAMP - MONITOR_NAME
+  # overlay is included in top left corner. Also now a THREADED background process so sending notifications is faster{[]}
+  # If yes, object detection will attempt to create
+  # a short GIF file around the object detection frame
+  # that can be sent via push notifications for instant playback, Pushover size limit limit: 2.5MB
+  # (Default:no)
+
+  # TO MAKE THINGS FAST! make sure the monitors are saving their events as JPEG in 'storage'. If using mp4 video passthrough
+  # detections and animations are WAY slower because ZM needs to build the MP4 and then send the frames from the MP4
+  # JPEG storage will give us the frames in real time as ZM reads them, try it out, the performance increase is astounding.
+  create_animation: no
+
+  # if animation already exists force write a new one (Default: no)
+  # force_animation: yes
+
+  # place a timestamp on the animations - Customizations are WIP (diff timestamp format, no monitor name)
+  animation_timestamp:
+    enabled: no  # Default: yes
+    # Make sure to quote the timestamp string!
+    date format: '%Y-%m-%d %H:%M:%S'  # Default: '%Y-%m-%d %H:%M:%S'
+    # Add the monitor name and monitor ID to the timestamp
+    monitor id: yes  # Default: yes
+    # BGR not RGB
+    text color: (255,255,255)  # Default: (255,255,255) aka white
+    # background is the solid colored rectangle that the timestamp text is printed on
+    background: yes  # Default: yes
+    # BGR not RGB
+    bg color: (0,0,0)  # Default: (0,0,0) aka black
+
+  # Format of animation burst
+  # valid options are "mp4", "gif", "mp4,gif"
+  # Note that gifs will be of a shorter duration
+  # as they take up much more disk space than mp4
+  # BUT you can enable fast_gif
+  animation_types: 'mp4,gif'
+
+  # if animation_types is gif then when can generate a fast preview gif
+  # every second frame is skipped and the frame rate doubled
+  # so you end up with a longer timeframe sped up (Default: no)
+  fast_gif: no
+
+  # default width of animation image. Be cautious when you increase this
+  # most mobile platforms give a very brief amount of time (in seconds)
+  # to download the image.
+  # Given your ZM instance will be serving the image, it will be slow anyway
+  # Making the total animation size bigger can result in the notification not
+  # getting an image at all (timed out)
+  animation_width: 640
+
+  # When an event is detected, ZM writes frames a little late
+  # On top of that, it looks like with caching enabled, the API layer doesn't
+  # get access to DB records for much longer (around 30 seconds), at least on my
+  # system. animation_retry_sleep refers to how long to wait before trying to grab
+  # frame information if it failed. animation_max_tries defines how many times it
+  # will try and retrieve frames before it gives up
+  animation_retry_sleep: 3
+  animation_max_tries: 8
+
+mlapi_options:
+  ###########################################
+  #    ------ [ MLAPI / REMOTE SECTION ] ------
+  ###########################################
+  # You can now run the machine learning code on a different server
+  # This frees up your ZM server for other things
+  # To do this, you need to setup https://github.com/baudneo/mlapi
+  # on your desired server and configure it with a DB user (python3 mlapi_dbuser.py). See its instructions
+
+  # This is the MASTER on/off switch for enabling communication to MLAPI, it must be yes/on/1/true to be enabled
+  ml_enable: yes
+
+  # If the mlapi routes all fail, you can still run the machine learning code locally
+  ml_fallback_local: no
+
+  # encrypted credentials setup
+  ml_routes : {
+    # weight of route, lower is more important.
+    weight: 0,
+    # NAME and KEY must be the same here and in the mlapi zmes_keys option for decryption to know what key to grab
+    name: 'mlapi_one',
+    # enabled: true  # Adding support for this next push
+
+    gateway: 'http://localhost:5000/api/v1',
+    # The user to login to mlapi (one of the MLAPI DB user' created using mlapi_dbuser.py)
+    user: '{[ML_USER]}',
+    pass: '{[ML_PASSWORD]}',
+    # The key to use for encryption
+    zm_pass: '{[ZM_ML_PASSWORD]}',
+    # zm_basic_user': '',
+    # zm_basic_pass': '',
+    basic_user: '{[ZM_BASIC_USER]}',
+    basic_password: '{[ZM_BASIC_PASS]}',
+
+    enc_key: '{[mlapi_one_key]}',
+    # No longer need to pass credentials to mlapi, the JWT AUTH token is passed (encrypted) to it instead
+
+    # weight: 1
+    # name: some other host
+    # gateway: xxxxxxxx
+  }
+
+
+###########################################
+#    ------ [ OBJECT MODEL SECTION ] ------
+###########################################
+object_options:
+  object_detection_pattern: (person|cat|dog|car|motorbike|bus|truck)
+  # object_detection_pattern: (person|car|motorbike|bus|truck|boat|dog|cat)
+  object_min_confidence: '0.6'
+
+  # Google Coral
+  coral_models: "{{base_data_path}}/models/coral_edgeptu"
+  # Newer models (EfficientDet3x and tf2 mobilenet v2)
+  tpu_efficientdet_lite3: '{{coral_models}}/efficientdet_lite3_512_ptq_edgetpu.tflite'
+  tpu_tf2_mobilenetv2: '{{coral_models}}/tf2_ssd_mobilenet_v2_coco17_ptq_edgetpu.tflite'
+  # The mobiledet model came out in Nov 2020 and is supposed to be faster and more accurate but YMMV
+  tpu_object_weights_mobiledet: '{{coral_models}}/ssdlite_mobiledet_coco_qat_postprocess_edgetpu.tflite'
+  tpu_object_weights_mobilenetv2: '{{coral_models}}/ssd_mobilenet_v2_coco_quant_postprocess_edgetpu.tflite'
+
+  tpu_object_labels: '{{coral_models}}/coco_indexed.names'
+  tpu_object_framework: coral_edgetpu
+  tpu_object_processor: tpu
+  tpu_min_confidence: '0.6'
+
+  yolo4_models: '{{base_data_path}}/models/yolov4'
+  # Yolo v4 on GPU (falls back to CPU if no GPU)
+  yolo4_object_weights: '{{yolo4_models}}/yolov4.weights'
+  yolo4_object_labels: '{{yolo4_models}}/coco.names'
+  yolo4_object_config: '{{yolo4_models}}/yolov4.cfg'
+  yolo4_object_framework: opencv
+  yolo4_object_processor: gpu
+  # use half precision floating point as target backend for yolo, on newer cards this may decrease your inferring time
+  # try without this enabled first a few times to get a baseline and then enable it to see if detections are faster.
+  # THIS SETTING ONLY APPLIES TO GPU ACCELERATED OPENCV
+  # read up on 'half precision floating point' and 'CUDA TARGET FP 16
+  # ** NOTE THIS IS EXPERIMENTAL **
+  fp16_target: yes
+
+  # Yolo v3 on GPU (falls back to CPU if no GPU)
+  yolo3_models: '{{base_data_path}}/models/yolov3'
+  # Yolo v4 on GPU (falls back to CPU if no GPU)
+  yolo3_object_weights: '{{yolo3_models}}/yolov3.weights'
+  yolo3_object_labels: '{{yolo3_models}}/coco.names'
+  yolo3_object_config: '{{yolo3_models}}/yolov3.cfg'
+  yolo3_object_framework: opencv
+  yolo3_object_processor: gpu
+
+  tinyyolo_models: '{{base_data_path}}/models/tinyyolov'
+  # Tiny Yolo V4 on GPU (falls back to CPU if no GPU)
+  tinyyolo_object_config: '{{tinyyolo_models}}4/yolov4-tiny.cfg'
+  tinyyolo_object_weights: '{{tinyyolo_models}}4/yolov4-tiny.weights'
+  tinyyolo_object_labels: '{{tinyyolo_models}}4/coco.names'
+  tinyyolo_object_framework: opencv
+  tinyyolo_object_processor: gpu
+
+
+face_options:
+  tpu_face_weights_mobilenetv2: '{{coral_models}}/ssd_mobilenet_v2_face_quant_postprocess_edgetpu.tflite'
+  face_detection_pattern: .*
+  # cpu or gpu, if gpu isnt available it will default to cpu. You can force CPU usage
+  face_dlib_processor: gpu
+
+  face_detection_framework: dlib
+  face_recognition_framework: dlib
+  face_num_jitters: 0
+  face_upsample_times: 0
+  face_model: cnn
+  face_train_model: cnn
+  # 0.5 and lower :  more strict, start @ 0.5 and test slowly (Default: 0.6)
+  face_recog_dist_threshold: 0.6
+  # I do not recommend changing the algo
+  face_recog_knn_algo: ball_tree
+  known_images_path: '{{base_data_path}}/known_faces'
+  unknown_images_path: '{{base_data_path}}/unknown_faces'
+  unknown_face_name: Unknown_Face
+  save_unknown_faces: yes
+  save_unknown_faces_leeway_pixels: 100
+
+alpr_options:
+  # regex pattern, specify plate numbers!
+  alpr_detection_pattern: .*
+
+  #-- Many of the ALPR providers offer both a cloud version
+  #-- and local SDK version. Sometimes local SDK format differs from
+  #-- the cloud instance. Set this to local or cloud. (Default: cloud)
+  alpr_api_type: local
+
+  # -----| If you are using plate recognizer | ------
+  # alpr_service: plate_recognizer
+  alpr_service: open_alpr_cmdline
+
+  #-- If you want to host a local SDK https://app.platerecognizer.com/sdk/
+  #alpr_url: http://192.168.1.21:8080/alpr
+
+  #-- Plate recog replace with your api key
+  alpr_key: '{[PLATEREC_ALPR_KEY]}'
+
+  #-- if yes, then it will log usage statistics of the ALPR service
+  platerec_stats: yes
+
+  #-- If you want to specify regions. See http://docs.platerecognizer.com/#regions-supported
+  platerec_regions: [ 'de' ]
+
+  #-- minimal confidence for actually detecting a plate
+  platerec_min_dscore: 0.1
+
+  #-- minimal confidence for the translated text - OCR in its docs
+  platerec_min_score: 0.2
+
+  # ----| If you are using openALPR Cloud API |-----
+  # alpr_service: open_alpr
+  # alpr_key'{[OPENALPR_ALPR_KEY]}'
+  #-- For an explanation of params, see http://doc.openalpr.com/api/?api: cloudapi
+  openalpr_recognize_vehicle: 1
+  openalpr_country: de
+  openalpr_state: ca
+  #-- openalpr returns percents, but we convert to between 0 and 1
+  openalpr_min_confidence: 0.3
+
+  # ----| If you are using openALPR command line |-----
+  # alpr_service: open_alpr_cmdline
+  # openalpr_cmdline_binary: alpr
+  openalpr_cmdline_binary: 
+
+  # Do an alpr -help to see options, plug them in here
+  # like say '-j -p ca -c US' etc.
+  # YOU MUST keep the -j its outputs JSON for ZMES to parse
+  # Note that alpr_pattern is honored
+  # For the rest, just stuff them in the cmd line options
+  # openalpr_cmdline_params: -j -d
+  openalpr_cmdline_params: --json --detect_region --country eu
+  openalpr_cmdline_min_confidence: 0.3
+  # *** Remember to play around with openalpr SDK .conf files (you can set libgpu for detector) and also have it
+  # distort/resize/blur the image x number of times until it finds a match
+
+
+####################################################
+#    ------ [ PER MONITOR OVERRIDES SECTION ] ------
+####################################################
+# You can override ALMOST any parameter on a per monitor basis, there are some illegal keys that would cause behaviour
+# DO NOT NEST monitors into a section.... it is already a section!
+monitors:
+  6942069:
+    # TO IDENTIFY POLYGONS make sure they end with _polygonzone or _polygon_zone
+    # NOTE: THIS I STHE LEGACY WAY TO DEFINE ZONES
+    # 1080p polygon
+    # front_yard_polygonzone: 0,427 1085,261 1075,200 1912,448 1912,1071 0,1079
+    # 4K polygon
+    #    front_yard_polygonzone: 0,877 2170,553 3822,1131 3822,2141 0,2159
+    #    front_yard_zone_detection_pattern: (person|dog|cat)
+    object_detection_pattern: (person|dog|cat)
+    # frame_set: '10,15,20,snapshot,alarm'
+
+    model_sequence: object
+    # sometimes it detects a large 'person', this should stop that.
+    person_max_detection_size: 65%
+
+    person_min_confidence: 0.4732
+    # ignore_past_det_labels: ['dog' , 'cat']
+    # match_past_detections: yes
+    # past_det_max_diff_area: 10%
+    # past_det_max_diff_area: 6784px
+    # max_detection_size: 90%
+    # car_past_det_max_diff_area: 45%
+    # dog_min_confidence: 0.60
+    # cat_min_confidence: 0.60
+    # car_min_confidence: 0.60
+    # truck_min_confidence: 0.60
+    # person_contained_area: 44%
+    contained_area: 44%
+
+    # HA add-on sensors
+    hass_notify: input_boolean.front_switch
+    hass_cooldown: input_number.front_cooldown
+    # Future addition for 'person'
+    # hass_person:
+    # - giuseppe
+    # - vinchenzo
+    # If you do not use HA to control the pushover sensors you can control the cooldown with this option
+    push_cooldown: 300
+    custom_push_script: '/home/me/mycoolscript.sh'  # see zmes_gotify.sh for the ARGS that are passed from zmes
+
+    # Pushover custom sounds for this monitor
+    # DEFAULT SOUND
+    push_sound: motion_frontyard
+    # Sound when a person is in the detected objects
+    # If there is more than 1 object that has a custom sound there is a hierarchy. 'person' takes priority over all
+    push_sound_person: person_frontyard
+    push_sound_car:
+    push_sound_truck:
+    push_sound_motorbike:
+    push_sound_dog:
+    push_sound_cat:
+
+    # NEW way to define zones
+    zones:
+      parking_area:
+        # Polygon points
+        coords: 805,200 1897,125 1910,562 7,594
+        # detection pattern REGEX
+        pattern: (person)
+        # These filters will take precedence over individual per-sequence options AND blanket model options (car_min_confidence)
+        # These are known as ZONE FILTERS
+        contains:
+          # 85% of car bounding box must be contained within this zones area
+          car: 85%
+          # 1 pixel of the person bounding box must be contained in this zones area
+          person: 1px
+        max_size:
+          # max size of the detected object
+          person: 60%
+        min_conf:
+          # min confidence of the detected object
+          person: 0.60
+        past_area_diff:
+          # match_past_detections
+          # difference in area between the detected object and the saved bounding box
+          person: 0.10
+  4:
+    model_sequence :  object
+    # model_sequence :  object
+    # object_detection_pattern: (person|car|motorbike|bus|truck|boat|dog|cat)
+    object_detection_pattern: (dog|cat)
+    alpr_detection_pattern:
+    face_detection_pattern:
+  11:
+    model_sequence :  object, alpr
+    # model_sequence :  object
+    # object_detection_pattern: (person|car|motorbike|bus|truck|boat|dog|cat)
+    object_detection_pattern: (car|motorbike|bus|truck)
+    alpr_detection_pattern:
+    face_detection_pattern:
+
+
+sequences:
+  #########################################################
+  #    ------ [ MACHINE LEARNING SEQUENCES SECTION ] ------
+  #########################################################
+  # 'smart_fps_thresh' -> if you have a frame_set of 'alarm,snapshot,120,180,240,320,380,440,snapshot' and it is a LIVE
+  # event. If the event is going to end up being 45 seconds long and frame_set calls a frame ID that is 'out of bounds'
+  # i.e. event frame buffer is only @ 275 and frame_set requested 320, that's an overage of 45 frames. if your fps is 10 that's
+  # 4.5 seconds over. if smart_fps_thresh is set to 8 (4.5 seconds is inside the 'threshold') it will wait around and
+  # attempt to keep grabbing the frame up to 3 attempts later with a wait time calculated to be roughly the 8 seconds.
+  # The default action is to set the frame ID to the last available frame and process that frame instead. That is what
+  # will happen if the frame ID called is 8+ seconds worth of frames later (FPS is calculated in the script)
+  # I think 4-8 is a good compromise for speed and being able to process a large spaced out frame set like the example above
+  smart_fps_thresh: 5
+
+  # if enabled, will not grab exclusive locks before inferring
+  # locking seems to cause issues on some unique file systems
+  disable_locks: no
+
+  # not used -> mlapiconfig.yml used instead
+  stream_sequence:
+    # 'most_models' (object+face+alpr), 'most', 'most_unique', 'first' #TYLER ADD 'union' for multiple frame detections per event!
+    frame_strategy: '{{frame_strategy}}'
+    frame_set: '{{frame_set}}'
+    # ANY of the delay options can be set as xx or xx.yy
+    # contig attempts and sleep
+    contig_frames_before_error: 2
+    delay_between_attempts: 2.143256
+    max_attempts: 3  # attempts per frame (this is a 'batch' for above setting)
+    delay_between_frames: 0.4 # delay between every frame in frame_set
+    # delay_between_snapshots takes precedence over the delay_between_frames if there will be a delay from both
+    delay_between_snapshots: 1  # between snapshot frames, so previous frame has to be a snapshot and so does current
+    smart_fps_thresh: '{{smart_fps_thresh}}'
+
+    # save every frame that is sent to the detection models. If you are processing a video or are getting weird results
+    # turn this on and review the frames in the 'save_frames_dir' directory.
+    # For thew time being it is your responsibility to clean up the directory after you are done (Script to do daily clean ups coming)
+    save_frames: 'no'                # (Default: no)
+    save_frames_dir: './images'      # (Default: /tmp) - directory to save the 'save_frames' to
+
+    # When controlling a video file
+    start_frame: 1
+    frame_skip: 5
+    max_frames: 12
+
+
+  ml_sequence:
+    general:
+      model_sequence: '{{model_sequence}}'
+      disable_locks: '{{disable_locks}}'
+      match_past_detections: '{{match_past_detections}}'
+      past_det_max_diff_area: '{{past_det_max_diff_area}}'
+      # ignore_past_detection_labels: ['dog', 'cat']
+      # when matching past detections, names in a group are treated the same
+      # also adding <alias>_min_confidence <alias>_past_det_max_diff_size
+      # example -> vehicles_min_confidence :  0.66
+      aliases:
+        vehicles: [ 'car', 'bus', 'truck', 'boat', 'motorcycle' ]
+        plants: [ 'broccoli', 'pottedplant', 'potted_plant' ]
+        animals: [ 'dog','cat','mouse','horse' ]
+      #      NOTE! per label overrides go here in 'general'
+      #      person_min_confidence: '{{person_min_confidence}}'
+      #      car_min_confidence: '{{car_min_confidence}}'
+      #      dog_min_confidence: '{{dog_min_confidence}}'
+      #      person_contained_area: '{{person_contained_area}}'
+      #      car_contained_area: '{{car_contained_area}}'
+      #      dog_contained_area: '{{dog_contained_area}}'
+      #      person_past_det_max_diff_area: '{{person_past_det_max_diff_area}}'
+      #      car_past_det_max_diff_area: '{{car_past_det_max_diff_area}}'
+      #      dog_past_det_max_diff_area: '{{dog_past_det_max_diff_area}}'
+      #      car_max_detection_size: '{{car_max_detection_size}}'
+      #      dog_max_detection_size: '{{dog_max_detection_size}}'
+      #      person_max_detection_size: '{{person_max_detection_size}}'
+    object:
+      general:
+        object_detection_pattern: '{{object_detection_pattern}}'
+        #       'first', 'most', 'most_unique', ****** 'union'
+        same_model_sequence_strategy: '{{same_model_sequence_strategy}}'
+        #       HAS to be inside object->general as it only applies to object detection
+        contained_area: '{{contained_area}}'
+      sequence:
+          # First run on TPU with higher confidence
+        - name: 'coral::SSD-Lite MobileDet 312x312'
+          enabled: 'no'
+          object_weights: '{{tpu_object_weights_mobiledet}}'
+          object_labels: '{{tpu_object_labels}}'
+          object_min_confidence: '{{tpu_min_confidence}}'
+          object_framework: '{{tpu_object_framework}}'
+          tpu_max_processes: '{{tpu_max_processes}}'
+          tpu_max_lock_wait: '{{tpu_max_lock_wait}}'
+          max_detection_size: '{{max_detection_size}}'
+        #      Second try MobileNetv2 object detection to compare to MobileDet results
+        - name: 'coral::MobileNETv2-SSD 300x300'
+          enabled: 'no'
+          object_weights: '{{tpu_object_weights_mobilenetv2}}'
+          object_labels: '{{tpu_object_labels}}'
+          object_min_confidence: '{{tpu_min_confidence}}'
+          object_framework: '{{tpu_object_framework}}'
+          tpu_max_processes: '{{tpu_max_processes}}'
+          tpu_max_lock_wait: '{{tpu_max_lock_wait}}'
+          max_detection_size: '{{max_detection_size}}'
+          model_height: 300
+          model_width: 300
+        # New models
+        - name: 'coral::MobileNETv2-SSD TensorFlow 2.0 300x300'
+          enabled: 'no'
+          object_weights: '{{tpu_tf2_mobilenetv2}}'
+          object_labels: '{{tpu_object_labels}}'
+          object_min_confidence: '{{tpu_min_confidence}}'
+          object_framework: '{{tpu_object_framework}}'
+          tpu_max_processes: '{{tpu_max_processes}}'
+          tpu_max_lock_wait: '{{tpu_max_lock_wait}}'
+          max_detection_size: '{{max_detection_size}}'
+          model_height: 300
+          model_width: 300
+
+        - name: 'coral::EfficientDet-Lite 3 512x512'
+          enabled: 'no'
+          object_weights: '{{tpu_efficientdet_lite3}}'
+          object_labels: '{{tpu_object_labels}}'
+          object_min_confidence: '{{tpu_min_confidence}}'
+          object_framework: '{{tpu_object_framework}}'
+          tpu_max_processes: '{{tpu_max_processes}}'
+          tpu_max_lock_wait: '{{tpu_max_lock_wait}}'
+          max_detection_size: '{{max_detection_size}}'
+          model_height: 512
+          model_width: 512
+
+        - name: 'DarkNet::v4 Pre-Trained'
+          enabled: 'yes'
+          object_config: '{{yolo4_object_config}}'
+          object_weights: '{{yolo4_object_weights}}'
+          object_labels: '{{yolo4_object_labels}}'
+          object_min_confidence: '{{object_min_confidence}}'
+          object_framework: '{{yolo4_object_framework}}'
+          object_processor: '{{yolo4_object_processor}}'
+          gpu_max_processes: '{{gpu_max_processes}}'
+          gpu_max_lock_wait: '{{gpu_max_lock_wait}}'
+          cpu_max_processes: '{{cpu_max_processes}}'
+          cpu_max_lock_wait: '{{cpu_max_lock_wait}}'
+          #      only applies to GPU, default is FP32; *** EXPERIMENTAL ***
+          fp16_target: '{{fp16_target}}'
+          #      at current moment this is a global setting turned on by just setting it to : yes
+          show_models: '{{show_models}}'
+          model_height: 416
+          model_width: 416
+
+        # AWS Rekognition object detection
+        # More info: https://medium.com/@michael-ludvig/aws-rekognition-support-for-zoneminder-object-detection-40b71f926a80
+        - name: 'AWS rekognition (PAID)'
+          enabled: 'no'
+          object_framework: 'aws_rekognition'
+          object_min_confidence: '0.7'
+          #      AWS region unless configured otherwise, e.g. in ~www-data/.aws/config
+          aws_region: 'us-east-1'
+          #      AWS credentials from /etc/zm/secrets.yml
+          #      unless running on EC2 instance with instance IAM role (which is preferable)
+          aws_access_key_id: '{[AWS_ACCESS_KEY_ID]}'
+          aws_secret_access_key: '{[AWS_SECRET_ACCESS_KEY]}'
+        # no other parameters are required
+
+    alpr:
+      general:
+        # every frame you send is counted as an API hit if using the cloud API
+        same_model_sequence_strategy: 'first'
+        # pre_existing_labels: ['car', 'motorbike', 'bus', 'truck', 'boat']
+        # can make it a reg-ex for certain license plate numbers
+        alpr_detection_pattern: '{{alpr_detection_pattern}}'
+      sequence:
+        # Try openALPR locally first (tweak with per camera openalpr.conf files, pre-warp and calibration, etc.)
+        # also remember masks for timestamps etc. per camera config files are powerful though
+        - name: 'openALPR Command Line'
+          enabled: 'yes'
+          alpr_service: 'open_alpr_cmdline'
+          openalpr_cmdline_binary: '{{openalpr_cmdline_binary}}'
+          openalpr_cmdline_params: '{{openalpr_cmdline_params}}'
+          openalpr_cmdline_min_confidence: '{{openalpr_cmdline_min_confidence}}'
+          max_size: '1600'
+
+        - name: 'Platerecognizer Cloud Service'
+          enabled: 'no'
+          # pel_any means as long as there are any detections, pel_none means only if there are no detections yet
+          # pre_existing_labels: 'pel_any'
+          # pre_existing_labels: ['car', 'motorbike', 'bus', 'truck', 'boat']
+          alpr_api_type: '{{alpr_api_type}}'
+          alpr_service: 'plate_recognizer'
+          alpr_key: '{{alpr_key}}'
+          platrec_stats: '{{platerec_stats}}'
+          platerec_min_dscore: '{{platerec_min_dscore}}'
+          platerec_min_score: '{{platerec_min_score}}'
+
+          openalpr_recognize_vehicle: 1
+          openalpr_country: '{{openalpr_country}}'
+          openalpr_state: '{{openalpr_state}}'
+          openalpr_min_confidence : '{{openalpr_min_confidence}}'
+          resize: 'no'
+          platerec_payload:
+          regions: [ 'de' ]
+          # max_size: '1600'
+          # camera_id: 12
+          # platerec_config:
+          # region: 'strict'
+          # mode: 'fast'
+
+    face:
+      general:
+        face_detection_pattern: '{{face_detection_pattern}}'
+        # combine results below
+        same_model_sequence_strategy: 'most'
+      sequence:
+        - name: 'Face Detection -> coral::MobileNETv2-SSD 320x320'
+          enabled: 'no'
+          face_detection_framework: 'tpu'
+          face_weights: '{{tpu_face_weights_mobilenetv2}}'
+          face_min_confidence: 0.3
+          model_height: 320
+          model_width: 320
+
+        - name: 'DLib::Face Detection/Recognition'
+          enabled: 'yes'
+          # Force CPU detection if you have a GPU (Before dlib used GPU if it was compiled with CUDA support regardless)
+          face_dlib_processor: gpu
+
+          # If you use TPU detection first, we can run this ONLY if TPU detects a face first
+          # pre_existing_labels: [ 'face' ]
+          save_unknown_faces: '{{save_unknown_faces}}'
+          save_unknown_faces_leeway_pixels: '{{save_unknown_faces_leeway_pixels}}'
+          face_detection_framework: '{{face_detection_framework}}'
+          known_images_path: '{{known_images_path}}'
+          unknown_images_path: '{{unknown_images_path}}'
+          face_model: '{{face_model}}'
+          face_train_model: '{{face_train_model}}'
+          face_recog_dist_threshold: '{{face_recog_dist_threshold}}'
+          face_num_jitters: '{{face_num_jitters}}'
+          face_upsample_times: '{{face_upsample_times}}'
+          gpu_max_processes: '{{gpu_max_processes}}'
+          gpu_max_lock_wait: '{{gpu_max_lock_wait}}'
+          cpu_max_processes: '{{cpu_max_processes}}'
+          cpu_max_lock_wait: '{{cpu_max_lock_wait}}'
+
+          object_min_confidence: '0.6'
+          max_detection_size: 100%
+          contained_area: '10'
+          max_size: 800
